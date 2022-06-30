@@ -27,6 +27,11 @@ type DirEntry struct {
 
 	// Ino is the inode number.
 	Ino uint64
+
+	// The Off field is seldom any kind of directory offset.
+	// Applications should treat this field as an opaque value,
+	// making no assumptions about its contents
+	Off uint64
 }
 
 func (d DirEntry) String() string {
@@ -62,12 +67,12 @@ func NewDirEntryList(data []byte, off uint64) *DirEntryList {
 // AddDirEntry tries to add an entry, and reports whether it
 // succeeded.
 func (l *DirEntryList) AddDirEntry(e DirEntry) bool {
-	return l.Add(0, e.Name, e.Ino, e.Mode)
+	return l.Add(0, e.Name, e.Ino, e.Mode, e.Off)
 }
 
 // Add adds a direntry to the DirEntryList, returning whether it
 // succeeded.
-func (l *DirEntryList) Add(prefix int, name string, inode uint64, mode uint32) bool {
+func (l *DirEntryList) Add(prefix int, name string, inode uint64, mode uint32, off uint64) bool {
 	if inode == 0 {
 		inode = FUSE_UNKNOWN_INO
 	}
@@ -82,7 +87,11 @@ func (l *DirEntryList) Add(prefix int, name string, inode uint64, mode uint32) b
 	l.buf = l.buf[:newLen]
 	oldLen += prefix
 	dirent := (*_Dirent)(unsafe.Pointer(&l.buf[oldLen]))
-	dirent.Off = l.offset + 1
+	if off == 0 {
+		dirent.Off = l.offset + 1
+	} else {
+		dirent.Off = off
+	}
 	dirent.Ino = inode
 	dirent.NameLen = uint32(len(name))
 	dirent.Typ = modeToType(mode)
@@ -112,7 +121,7 @@ func (l *DirEntryList) Add(prefix int, name string, inode uint64, mode uint32) b
 func (l *DirEntryList) AddDirLookupEntry(e DirEntry) *EntryOut {
 	const entryOutSize = int(unsafe.Sizeof(EntryOut{}))
 	oldLen := len(l.buf)
-	ok := l.Add(entryOutSize, e.Name, e.Ino, e.Mode)
+	ok := l.Add(entryOutSize, e.Name, e.Ino, e.Mode, e.Off)
 	if !ok {
 		return nil
 	}
